@@ -1,0 +1,124 @@
+name: Docker Build, Test and Publish
+
+on:
+  push:
+    branches: [ "*" ]
+    tags: 
+      - v*
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Build Docker image (single platform for testing)
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64
+        push: false
+        tags: kaczmar2/nginx-reverse-proxy:test
+        load: true
+        
+    - name: Test image can start
+      run: |
+        # Start container
+        docker run -d \
+          --name nginx-test \
+          -p 8080:80 \
+          -p 8443:443 \
+          kaczmar2/nginx-reverse-proxy:test
+          
+        # Wait for startup
+        sleep 5
+        
+        # Check if container is running
+        docker ps | grep nginx-test
+        
+        # Check logs for nginx startup
+        docker logs nginx-test
+        
+    - name: Test nginx functionality
+      run: |
+        # Test that nginx is responding
+        curl -f http://localhost:8080 || exit 1
+        echo "✅ nginx is serving content"
+        
+        # Test nginx configuration syntax
+        docker exec nginx-test nginx -t || exit 1
+        echo "✅ nginx configuration is valid"
+        
+        # Test that example configs are present
+        docker exec nginx-test ls -la /etc/nginx/sites.template/ || exit 1
+        echo "✅ Example site configurations are present"
+        
+        docker exec nginx-test ls -la /etc/nginx/includes/ || exit 1
+        echo "✅ Include configurations are present"
+        
+        # Test that built-in configs are working
+        docker exec nginx-test cat /etc/nginx/nginx.conf | grep "include /etc/nginx/sites" || exit 1
+        echo "✅ nginx.conf includes sites directory"
+        
+        docker exec nginx-test cat /etc/nginx/nginx.conf | grep "include /etc/nginx/conf.d" || exit 1
+        echo "✅ nginx.conf includes conf.d directory"
+        
+    - name: Test landing page content
+      run: |
+        # Test landing page contains expected content
+        CONTENT=$(curl -s http://localhost:8080)
+        echo "$CONTENT" | grep -q "nginx-reverse-proxy" || exit 1
+        echo "✅ Landing page contains expected title"
+        
+        echo "$CONTENT" | grep -q "Opinionated nginx reverse proxy" || exit 1
+        echo "✅ Landing page contains expected description"
+        
+    - name: Cleanup
+      if: always()
+      run: |
+        docker stop nginx-test || true
+        docker rm nginx-test || true
+
+    - name: Login to Docker Hub
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Login to GitHub Container Registry
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      if: startsWith(github.ref, 'refs/tags/v')
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: |
+          kaczmar2/nginx-reverse-proxy
+          ghcr.io/${{ github.repository }}
+        tags: |
+          type=semver,pattern={{version}}
+
+    - name: Build and push to registries
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64,linux/arm/v7
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}

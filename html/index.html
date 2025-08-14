@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>nginx-reverse-proxy</title>
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #363636;
+      line-height: 1.6;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+    
+    .card {
+      background-color: rgba(255, 255, 255, 0.95);
+      border-radius: 15px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+    }
+    
+    .main-card {
+      text-align: center;
+      background-color: rgba(255, 255, 255, 0.98);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+    }
+    
+    .icon {
+      font-size: 4rem;
+      margin-bottom: 1rem;
+      display: inline-block;
+    }
+    
+    .server-icon::before {
+      content: "🖥️";
+    }
+    
+    .shield-icon::before {
+      content: "🛡️";
+    }
+    
+    .gear-icon::before {
+      content: "⚙️";
+    }
+    
+    .rocket-icon::before {
+      content: "🚀";
+    }
+    
+    .check-icon::before {
+      content: "✅";
+    }
+    
+    .github-icon::before {
+      content: "📚";
+    }
+    
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 400;
+      margin-bottom: 1.5rem;
+      color: #666;
+    }
+    
+    h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+    
+    p {
+      margin-bottom: 1rem;
+      color: #555;
+    }
+    
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+      margin-bottom: 2rem;
+    }
+    
+    .feature-card {
+      text-align: center;
+      height: 100%;
+    }
+    
+    .feature-card .icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+    
+    .status-card {
+      max-width: 600px;
+      margin: 0 auto;
+      text-align: center;
+    }
+    
+    .button {
+      display: inline-block;
+      background-color: #667eea;
+      color: white;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+      transition: background-color 0.2s;
+      margin-top: 1rem;
+    }
+    
+    .button:hover {
+      background-color: #5a6fd8;
+      color: white;
+    }
+    
+    .status-indicator {
+      color: #28a745;
+      font-weight: 600;
+    }
+    
+    @media (max-width: 768px) {
+      .container {
+        padding: 1rem;
+      }
+      
+      h1 {
+        font-size: 2rem;
+      }
+      
+      h2 {
+        font-size: 1.25rem;
+      }
+      
+      .grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    
+    <!-- Main Title Card -->
+    <div class="card main-card">
+      <div class="icon server-icon"></div>
+      <h1>nginx-reverse-proxy</h1>
+      <h2>Opinionated nginx reverse proxy for homelab environments</h2>
+      <p>
+        This Docker image provides a clean, organized structure for managing nginx reverse proxy configurations.
+        Perfect for routing traffic to your homelab services with SSL termination and modern security headers.
+      </p>
+    </div>
+
+    <!-- Feature Cards -->
+    <div class="grid">
+      <div class="card feature-card">
+        <div class="icon shield-icon"></div>
+        <h3>Secure by Default</h3>
+        <p>
+          SSL/TLS termination, HSTS headers, and modern security configurations included.
+        </p>
+      </div>
+
+      <div class="card feature-card">
+        <div class="icon gear-icon"></div>
+        <h3>Organized Structure</h3>
+        <p>
+          Modular configuration with reusable includes and numbered site configs for predictable loading.
+        </p>
+      </div>
+
+      <div class="card feature-card">
+        <div class="icon rocket-icon"></div>
+        <h3>Ready to Use</h3>
+        <p>
+          Example configurations for UniFi, Pi-hole, Home Assistant, and other common homelab services.
+        </p>
+      </div>
+    </div>
+
+    <!-- Status Section -->
+    <div class="card status-card">
+      <h3>
+        <span class="icon check-icon"></span>
+        <span class="status-indicator">nginx is running</span>
+      </h3>
+      <p>
+        Configure your reverse proxy by mounting your configuration files to the appropriate directories.
+      </p>
+      <a href="https://github.com/kaczmar2/nginx-reverse-proxy" class="button">
+        <span class="icon github-icon"></span>
+        View Documentation
+      </a>
+    </div>
+
+  </div>
+
+</body>
+</html>

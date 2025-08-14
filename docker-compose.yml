@@ -1,0 +1,15 @@
+services:
+  nginx-proxy:
+    image: kaczmar2/nginx-reverse-proxy
+    container_name: nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./sites:/etc/nginx/sites              # Your reverse proxy site configs
+      - ./ssl:/etc/nginx/ssl                  # SSL certificates
+      # Optional: Override the landing page
+      # - ./html:/usr/share/nginx/html
+      # Optional: Mount host timezone
+      - /etc/localtime:/etc/localtime:ro
