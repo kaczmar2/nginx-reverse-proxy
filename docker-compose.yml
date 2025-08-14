@@ -9,7 +9,7 @@ services:
     volumes:
       - ./sites:/etc/nginx/sites              # Your reverse proxy site configs
       - ./ssl:/etc/nginx/ssl                  # SSL certificates
-      # Optional: Override the landing page
-      # - ./html:/usr/share/nginx/html
-      # Optional: Mount host timezone
-      - /etc/localtime:/etc/localtime:ro
+      # - ./html:/usr/share/nginx/html        # Optional: Override the landing page
+    environment:
+      - TZ=America/Denver
+    

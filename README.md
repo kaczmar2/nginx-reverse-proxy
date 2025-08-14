@@ -334,7 +334,8 @@ services:
     volumes:
       - ./sites:/etc/nginx/sites
       - ./ssl:/etc/nginx/ssl
-      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - TZ=America/Denver
 ```
 
 ```bash
@@ -415,9 +416,6 @@ Optional mounts:
 ```bash
 # Override the landing page
 -v ./custom-html:/usr/share/nginx/html
-
-# Sync timezone
--v /etc/localtime:/etc/localtime:ro
 ```
 
 ## SSL Certificate Management
