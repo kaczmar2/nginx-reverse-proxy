@@ -1,7 +1,6 @@
 FROM nginx:alpine-slim
 
-# Labels following OCI standard (similar to Zabbix approach)
-LABEL org.opencontainers.image.authors="Christian Kaczmarek <kacmar2@mail.org>" \
+LABEL org.opencontainers.image.authors="Christian Kaczmarek" \
       org.opencontainers.image.description="Opinionated nginx reverse proxy Docker image for homelab use" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/kaczmar2/nginx-reverse-proxy"
