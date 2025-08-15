@@ -11,7 +11,7 @@ RUN mkdir -p /etc/nginx/includes \
     && mkdir -p /etc/nginx/sites \
     && mkdir -p /etc/nginx/ssl
 
-# Copy the opinionated configuration (not templates - this is the implementation)
+# Copy nginx configuration
 COPY config/nginx.conf /etc/nginx/nginx.conf
 COPY config/conf.d/ /etc/nginx/conf.d/
 COPY config/includes/ /etc/nginx/includes/
