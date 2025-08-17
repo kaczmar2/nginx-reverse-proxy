@@ -230,6 +230,7 @@ jobs:
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
+        outputs: type=image,name=target,annotation-index.org.opencontainers.image.description=Opinionated nginx reverse proxy Docker image for homelab use
         
     - name: Create Git Tag
       run: |
