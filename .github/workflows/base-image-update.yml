@@ -35,7 +35,7 @@ jobs:
         GH_TOKEN: ${{ secrets.GH_ACTIONS_PAT }}
       run: |
         # Get the digest using docker pull (multi-platform images require this approach)
-        CURRENT_DIGEST=$(docker pull nginx:alpine-slim 2>&1 | grep "Digest:" | sed 's/.*Digest: //' || echo "")
+        CURRENT_DIGEST=$(docker pull nginx:alpine 2>&1 | grep "Digest:" | sed 's/.*Digest: //' || echo "")
         
         # Get the digest from GitHub repository variable using REST API
         echo "Fetching last digest from GitHub..."

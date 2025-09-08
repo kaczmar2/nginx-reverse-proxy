@@ -6,7 +6,7 @@ An opinionated nginx reverse proxy Docker image designed for easy configuration 
 
 ## Features
 
-- **Based on `nginx:alpine-slim`** for minimal size and security
+- **Based on `nginx:alpine`** for minimal size and security
 - **Opinionated configuration** with proven nginx.conf, SSL settings, and security headers
 - **Modular includes** for SSL, proxy headers, WebSocket support, and HSTS
 - **Example configurations** for common homelab services (UniFi, Pi-hole, Home Assistant, etc.)

@@ -1,4 +1,4 @@
-FROM nginx:alpine-slim
+FROM nginx:alpine
 
 LABEL org.opencontainers.image.authors="Christian Kaczmarek" \
       org.opencontainers.image.description="Opinionated nginx reverse proxy Docker image for homelab use" \
