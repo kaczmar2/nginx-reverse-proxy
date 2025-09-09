@@ -28,5 +28,9 @@ RUN chown -R nginx:nginx /usr/share/nginx/html \
 # Expose standard HTTP and HTTPS ports
 EXPOSE 80 443
 
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost/ || exit 1
+
 # Use the default nginx command
 CMD ["nginx", "-g", "daemon off;"]
