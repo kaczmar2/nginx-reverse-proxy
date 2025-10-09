@@ -63,7 +63,10 @@ jobs:
         
         docker exec nginx-test ls -la /etc/nginx/includes/ || exit 1
         echo "✅ Include configurations are present"
-        
+
+        docker exec nginx-test cat /etc/nginx/includes/error_pages.conf || exit 1
+        echo "✅ Error pages include file is present"
+
         # Test that built-in configs are working
         docker exec nginx-test cat /etc/nginx/nginx.conf | grep "include /etc/nginx/sites" || exit 1
         echo "✅ nginx.conf includes sites directory"
