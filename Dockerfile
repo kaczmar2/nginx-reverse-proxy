@@ -18,6 +18,9 @@ COPY config/includes/ /etc/nginx/includes/
 # Copy example site configurations as templates for reference
 COPY config/sites/ /etc/nginx/sites.template/
 
+# Copy the default blackhole config to active sites directory
+COPY config/sites/00-default-blackhole.conf /etc/nginx/sites/00-default-blackhole.conf
+
 # Copy custom HTML files
 COPY html/ /usr/share/nginx/html/
 
