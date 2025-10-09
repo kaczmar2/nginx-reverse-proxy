@@ -77,10 +77,44 @@ jobs:
         CONTENT=$(curl -s http://localhost:8080)
         echo "$CONTENT" | grep -q "nginx-reverse-proxy" || exit 1
         echo "✅ Landing page contains expected title"
-        
+
         echo "$CONTENT" | grep -q "Opinionated nginx reverse proxy" || exit 1
         echo "✅ Landing page contains expected description"
-        
+
+    - name: Test health check endpoint
+      run: |
+        # Test health check returns 200
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/healthz)
+        if [ "$HTTP_CODE" != "200" ]; then
+          echo "❌ Health check failed with HTTP $HTTP_CODE"
+          exit 1
+        fi
+        echo "✅ Health check endpoint returns 200"
+
+        # Test health check response content
+        HEALTH_RESPONSE=$(curl -s http://localhost:8080/healthz)
+        echo "$HEALTH_RESPONSE" | grep -q "ok" || exit 1
+        echo "✅ Health check returns expected content"
+
+    - name: Test error pages
+      run: |
+        # Verify error pages exist in container
+        docker exec nginx-test ls -la /usr/share/nginx/html/errors/ || exit 1
+        echo "✅ Error pages directory exists in container"
+
+        # Test 404 error page returns 404 status
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/nonexistent-page)
+        if [ "$HTTP_CODE" != "404" ]; then
+          echo "❌ 404 page returned HTTP $HTTP_CODE instead of 404"
+          exit 1
+        fi
+        echo "✅ 404 error page returns correct status code"
+
+        # Test 404 page contains custom content
+        ERROR_CONTENT=$(curl -s http://localhost:8080/nonexistent-page)
+        echo "$ERROR_CONTENT" | grep -q "Page Not Found" || exit 1
+        echo "✅ Custom 404 page is served with expected content"
+
     - name: Cleanup
       if: always()
       run: |

@@ -18,6 +18,9 @@ COPY config/includes/ /etc/nginx/includes/
 # Copy example site configurations as templates for reference
 COPY config/sites/ /etc/nginx/sites.template/
 
+# Copy the default blackhole config to active sites directory
+COPY config/sites/00-default-blackhole.conf /etc/nginx/sites/00-default-blackhole.conf
+
 # Copy custom HTML files
 COPY html/ /usr/share/nginx/html/
 
@@ -30,7 +33,7 @@ EXPOSE 80 443
 
 # Add healthcheck
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost/ || exit 1
+  CMD curl -fsS http://127.0.0.1/healthz || exit 1
 
 # Use the default nginx command
 CMD ["nginx", "-g", "daemon off;"]

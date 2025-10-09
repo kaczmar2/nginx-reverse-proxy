@@ -9,7 +9,10 @@ services:
     volumes:
       - ./sites:/etc/nginx/sites              # Your reverse proxy site configs
       - ./ssl:/etc/nginx/ssl                  # SSL certificates
-      # - ./html:/usr/share/nginx/html        # Optional: Override the landing page
+      # HTML customization options (choose one approach):
+      # - ./html:/usr/share/nginx/html                        # Replace all HTML (requires copying errors/ too)
+      # - ./html/index.html:/usr/share/nginx/html/index.html  # Customize only landing page
+      # - ./html/errors:/usr/share/nginx/html/errors          # Customize only error pages
     environment:
       - TZ=America/Denver
     
