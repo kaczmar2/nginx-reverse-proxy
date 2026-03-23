@@ -27,7 +27,7 @@ jobs:
       
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       
     - name: Check for base image updates
       id: check
@@ -93,7 +93,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         # Get the latest commit with the updated digest
         ref: main
@@ -130,10 +130,10 @@ jobs:
         echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
         
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      uses: docker/setup-buildx-action@v4
         
     - name: Build Docker image (single platform for testing)
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: .
         platforms: linux/amd64
@@ -226,7 +226,7 @@ jobs:
           type=semver,pattern={{version}},value=${{ steps.version.outputs.tag }}
 
     - name: Build and push to registries
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: .
         platforms: linux/amd64,linux/arm64,linux/arm/v7
