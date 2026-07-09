@@ -12,6 +12,7 @@ An opinionated nginx reverse proxy Docker image designed for easy configuration 
 - **Example configurations** for common homelab services (UniFi, Pi-hole, Home Assistant, etc.)
 - **Custom landing page** showing the proxy is running
 - **SSL-ready** with organized certificate structure
+- **Vhost-aware access logs** — nginx's default `main` log format with `"$host"` appended as a trailing field (since v1.6.0), so per-vhost traffic can be split from a single log stream
 
 ## Quick Start
 
