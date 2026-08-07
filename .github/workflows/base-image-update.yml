@@ -27,7 +27,7 @@ jobs:
       
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
       
     - name: Check for base image updates
       id: check
@@ -93,7 +93,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
       with:
         # Get the latest commit with the updated digest
         ref: main
