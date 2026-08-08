@@ -1,6 +1,6 @@
 # nginx-reverse-proxy
 
-[![Docker Build, Test and Publish](https://github.com/kaczmar2/nginx-reverse-proxy/actions/workflows/docker-build.yml/badge.svg)](https://github.com/kaczmar2/nginx-reverse-proxy/actions/workflows/docker-build.yml) [![Base Image Update Check](https://github.com/kaczmar2/nginx-reverse-proxy/actions/workflows/base-image-update.yml/badge.svg)](https://github.com/kaczmar2/nginx-reverse-proxy/actions/workflows/base-image-update.yml)
+[![Docker Build, Test and Publish](https://github.com/kaczmar2/nginx-reverse-proxy/actions/workflows/docker-build.yml/badge.svg)](https://github.com/kaczmar2/nginx-reverse-proxy/actions/workflows/docker-build.yml)
 
 An opinionated nginx reverse proxy Docker image designed for easy configuration management in homelab environments. This image provides a battle-tested nginx configuration with modern security settings, requiring users to only manage their site-specific reverse proxy configurations.
 

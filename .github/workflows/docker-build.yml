@@ -1,34 +1,138 @@
 name: Docker Build, Test and Publish
 
+# Builds and tests every push. Publishes in exactly two cases, decided by the
+# "Decide whether to publish" step below:
+#
+#   1. You push a v* tag. The published version is the tag you chose, so major
+#      and minor releases stay under your control.
+#   2. Renovate merges a base image digest bump into main. The patch segment is
+#      incremented and the release happens unattended.
+#
+# Everything else builds and tests only. In particular, your own pushes to main
+# never publish, even when they touch the Dockerfile, so a code change plus a
+# tag of your choosing produces one release rather than two.
+#
+# Build, publish, and tag are one job on purpose. A tag pushed with GITHUB_TOKEN
+# does not start another workflow, so publishing cannot wait for the tag event.
+# Sharing a job also keeps the buildx cache warm, so the image published is the
+# one just tested.
 on:
   push:
     branches: [ "*" ]
-    tags: 
+    tags:
       - v*
   pull_request:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
-      
+      uses: actions/checkout@v7
+      with:
+        # Full history and tags: the version calculation needs the most recent
+        # release tag, and the Dockerfile check compares against the previous
+        # commit.
+        fetch-depth: 0
+
+    - name: Decide whether to publish
+      id: decide
+      env:
+        REF: ${{ github.ref }}
+        EVENT: ${{ github.event_name }}
+      run: |
+        # Read the author from git, not from the event payload. This is
+        # verifiable locally, and it does not depend on how GitHub populates
+        # payload fields for bot commits.
+        AUTHOR=$(git log -1 --format='%an')
+
+        PUBLISH=false
+        CREATE_TAG=false
+        VERSION=""
+
+        if [ "$EVENT" = "push" ] && [ "${REF#refs/tags/v}" != "$REF" ]; then
+          # You pushed a version tag. Publish exactly what you named.
+          VERSION="${REF#refs/tags/v}"
+          PUBLISH=true
+          echo "Tag push by you. Publishing version $VERSION, tag already exists."
+
+        elif [ "$EVENT" = "push" ] && [ "$REF" = "refs/heads/main" ] && [ "$AUTHOR" = "renovate[bot]" ]; then
+          # Renovate merged something. Only a base image change is a release:
+          # it also automerges GitHub Actions updates, which must not publish.
+          if git diff --name-only HEAD~1 HEAD | grep -qx 'Dockerfile'; then
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
+            NUM="${LATEST_TAG#v}"
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$NUM"
+            VERSION="${MAJOR:-1}.${MINOR:-0}.$(( ${PATCH:-0} + 1 ))"
+            PUBLISH=true
+            CREATE_TAG=true
+            echo "Renovate changed the Dockerfile. $LATEST_TAG -> v$VERSION, tag will be created."
+          else
+            echo "Renovate commit, but the Dockerfile is unchanged. Build and test only."
+          fi
+
+        else
+          echo "Not a release trigger. Build and test only."
+        fi
+
+        echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+        echo "create_tag=$CREATE_TAG" >> "$GITHUB_OUTPUT"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+        {
+          echo "### Release decision"
+          echo ""
+          echo "| | |"
+          echo "|---|---|"
+          echo "| event | \`$EVENT\` |"
+          echo "| ref | \`$REF\` |"
+          echo "| commit author | \`${AUTHOR:-n/a}\` |"
+          echo "| publish | \`$PUBLISH\` |"
+          echo "| version | \`${VERSION:-n/a}\` |"
+          echo "| create tag | \`$CREATE_TAG\` |"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    # No setup-qemu-action here on purpose. The buildx docker-container driver
+    # carries its own emulators, so cross-architecture BUILDS need nothing from
+    # the host: a runner with no qemu binfmt handlers still produces genuine
+    # arm64 and arm/v7 images. Host QEMU is only needed to RUN a foreign-arch
+    # image, and the tests below only run the linux/amd64 image.
+    #
+    # If a test is ever added that runs the arm64 or arm/v7 image, it will fail
+    # with "exec format error". Add docker/setup-qemu-action@v4 before this step
+    # at that point, and do not pin the emulator image.
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
-      
-    - name: Build Docker image (single platform for testing)
-      uses: docker/build-push-action@v6
+
+    # Build every platform we publish, so a break on arm64 or arm/v7 shows up
+    # here instead of at publish time. The functional tests below need a
+    # loadable image, and `load: true` only works for a single platform, so
+    # this step only checks that the build succeeds.
+    - name: Build all published platforms
+      uses: docker/build-push-action@v7
       with:
         context: .
+        file: ./Dockerfile
+        platforms: linux/amd64,linux/arm64,linux/arm/v7
+        push: false
+
+    - name: Build Docker image (single platform for testing)
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: ./Dockerfile
         platforms: linux/amd64
         push: false
-        tags: kaczmar2/nginx-reverse-proxy:test
+        tags: nginx-reverse-proxy:test
         load: true
-        
+
     - name: Test image can start
       run: |
         # Start container
@@ -36,31 +140,31 @@ jobs:
           --name nginx-test \
           -p 8080:80 \
           -p 8443:443 \
-          kaczmar2/nginx-reverse-proxy:test
-          
+          nginx-reverse-proxy:test
+
         # Wait for startup
         sleep 5
-        
+
         # Check if container is running
         docker ps | grep nginx-test
-        
+
         # Check logs for nginx startup
         docker logs nginx-test
-        
+
     - name: Test nginx functionality
       run: |
         # Test that nginx is responding
         curl -f http://localhost:8080 || exit 1
         echo "✅ nginx is serving content"
-        
+
         # Test nginx configuration syntax
         docker exec nginx-test nginx -t || exit 1
         echo "✅ nginx configuration is valid"
-        
+
         # Test that example configs are present
         docker exec nginx-test ls -la /etc/nginx/sites.template/ || exit 1
         echo "✅ Example site configurations are present"
-        
+
         docker exec nginx-test ls -la /etc/nginx/includes/ || exit 1
         echo "✅ Include configurations are present"
 
@@ -70,10 +174,10 @@ jobs:
         # Test that built-in configs are working
         docker exec nginx-test cat /etc/nginx/nginx.conf | grep "include /etc/nginx/sites" || exit 1
         echo "✅ nginx.conf includes sites directory"
-        
+
         docker exec nginx-test cat /etc/nginx/nginx.conf | grep "include /etc/nginx/conf.d" || exit 1
         echo "✅ nginx.conf includes conf.d directory"
-        
+
     - name: Test landing page content
       run: |
         # Test landing page contains expected content
@@ -125,38 +229,87 @@ jobs:
         docker rm nginx-test || true
 
     - name: Login to Docker Hub
-      if: startsWith(github.ref, 'refs/tags/v')
-      uses: docker/login-action@v3
+      if: steps.decide.outputs.publish == 'true'
+      uses: docker/login-action@v4
       with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        username: ${{ github.repository_owner }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     - name: Login to GitHub Container Registry
-      if: startsWith(github.ref, 'refs/tags/v')
-      uses: docker/login-action@v3
+      if: steps.decide.outputs.publish == 'true'
+      uses: docker/login-action@v4
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    # The image description comes from the repository About field, which
+    # overrides the Dockerfile LABEL. Keep the About text accurate.
     - name: Extract metadata
-      if: startsWith(github.ref, 'refs/tags/v')
+      if: steps.decide.outputs.publish == 'true'
       id: meta
-      uses: docker/metadata-action@v5
+      uses: docker/metadata-action@v6
+      env:
+        # Annotate the index as well as each platform manifest. The index is
+        # what a registry shows for a multi-platform image, so without this the
+        # description would be missing from the page users actually look at.
+        DOCKER_METADATA_ANNOTATIONS_LEVELS: index,manifest
       with:
         images: |
-          kaczmar2/nginx-reverse-proxy
-          ghcr.io/${{ github.repository }}
+          ${{ github.repository_owner }}/nginx-reverse-proxy
+          ghcr.io/${{ github.repository_owner }}/nginx-reverse-proxy
         tags: |
-          type=semver,pattern={{version}}
+          type=semver,pattern={{version}},value=v${{ steps.decide.outputs.version }}
 
     - name: Build and push to registries
-      if: startsWith(github.ref, 'refs/tags/v')
-      uses: docker/build-push-action@v6
+      id: push
+      if: steps.decide.outputs.publish == 'true'
+      uses: docker/build-push-action@v7
       with:
         context: .
+        file: ./Dockerfile
         platforms: linux/amd64,linux/arm64,linux/arm/v7
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-        outputs: type=image,name=target,annotation-index.org.opencontainers.image.description=Opinionated nginx reverse proxy Docker image for homelab use
+        # Annotates the multi-platform index, so registries show a description
+        # for the image as a whole and not only for each platform.
+        annotations: ${{ steps.meta.outputs.annotations }}
+
+    # Reports what actually reached the registries, read back from the pushed
+    # manifest rather than restated from config. Never fails the run: a release
+    # that worked should not go red because a reporting call hiccuped.
+    - name: Summarise the release
+      if: steps.decide.outputs.publish == 'true'
+      env:
+        VERSION: ${{ steps.decide.outputs.version }}
+        DIGEST: ${{ steps.push.outputs.digest }}
+        OWNER: ${{ github.repository_owner }}
+      run: |
+        IMAGE="ghcr.io/$OWNER/nginx-reverse-proxy:$VERSION"
+        PLATFORMS=$(docker buildx imagetools inspect "$IMAGE" 2>/dev/null \
+          | awk '/^  Platform:/ {print $2}' | grep -v unknown | paste -sd', ' || true)
+        {
+          echo "### Published"
+          echo ""
+          echo "| | |"
+          echo "|---|---|"
+          echo "| version | \`$VERSION\` |"
+          echo "| digest | \`$DIGEST\` |"
+          echo "| platforms | ${PLATFORMS:-could not read manifest} |"
+          echo "| Docker Hub | \`$OWNER/nginx-reverse-proxy:$VERSION\` |"
+          echo "| GHCR | \`$IMAGE\` |"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    # Only when the version was computed here. A tag you pushed already exists.
+    # This runs after the push, so the images are live before the tag appears.
+    - name: Create Git Tag
+      if: steps.decide.outputs.create_tag == 'true'
+      env:
+        TAG: v${{ steps.decide.outputs.version }}
+        COMMIT: ${{ github.sha }}
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git tag -a "$TAG" -m "Automated release $TAG from base image update in $COMMIT"
+        git push origin "$TAG"

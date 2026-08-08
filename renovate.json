@@ -1,0 +1,36 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "docker:pinDigests"
+  ],
+  "platformAutomerge": false,
+  "automergeStrategy": "squash",
+  "packageRules": [
+    {
+      "description": "Never update this repo's own image. docker-compose.yml must keep tracking the latest tag.",
+      "matchPackageNames": [
+        "ghcr.io/kaczmar2/nginx-reverse-proxy",
+        "kaczmar2/nginx-reverse-proxy"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Automerge base image updates. pinDigest is the first pin, digest is every bump after.",
+      "matchManagers": ["dockerfile"],
+      "matchUpdateTypes": ["pinDigest", "digest"],
+      "automerge": true
+    },
+    {
+      "description": "Automerge minor and patch updates to GitHub Actions.",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
+    },
+    {
+      "description": "Major updates need review.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    }
+  ]
+}
