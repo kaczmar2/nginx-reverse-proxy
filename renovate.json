@@ -17,7 +17,10 @@
       "enabled": false
     },
     {
-      "description": "Automerge base image updates. pinDigest is the first pin, digest is every bump after.",
+      "description": [
+        "Automerge base image updates. pinDigest is the first pin, digest is every bump after.",
+        "Do not add minimumReleaseAge. A digest update carries no timestamp, so it would be held pending and never merge."
+      ],
       "matchManagers": ["dockerfile"],
       "matchUpdateTypes": ["pinDigest", "digest"],
       "automerge": true
@@ -29,11 +32,9 @@
     },
     {
       "description": [
-        "Never automerge a GitHub Actions update. Human review is the only control that works here, so do not replace this rule with a delay such as minimumReleaseAge.",
-        "Why review is the only control: an action runs third-party code inside this workflow, where it can read DOCKERHUB_TOKEN and a GITHUB_TOKEN that holds contents:write and packages:write. That is enough to push a poisoned image to Docker Hub and GHCR and to create a release tag. A digest pin stops a moved tag from changing what runs, but it does not stop Renovate from raising a pull request that moves the pin to the attacker's commit. Only a person reading the diff catches that.",
-        "Why minimumReleaseAge does not help: for actions Renovate uses the github-tags datasource, which reports when a version was first released, not when its tag was last re-pushed. A tag force-pushed onto old code keeps the old timestamp and clears any delay at once.",
-        "This rule is deliberately blanket, with no matchUpdateTypes. Digest pinning changes the update type Renovate reports: a pinned SHA whose comment names an exact version, such as # v7.0.1, produces patch and minor updates, so a per-updateType automerge rule elsewhere in this file would silently switch automerge back on for action code. Keep the trailing comments at the major tag, for example # v7, and keep this rule last so it wins over any rule above it.",
-        "This does not affect the Dockerfile base image, which is matched by manager and still automerges."
+        "Never automerge GitHub Action updates. Actions run with the Docker Hub token and the GITHUB_TOKEN, so a person must review every one.",
+        "Do not replace this with minimumReleaseAge. It ages from a version's first release, not from a tag re-push, so a force-pushed tag clears the delay at once.",
+        "Keep the trailing comments at the major tag, such as # v7. An exact version like # v7.0.1 turns these into patch and minor updates, which another rule could automerge."
       ],
       "matchManagers": ["github-actions"],
       "automerge": false
