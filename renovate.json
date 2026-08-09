@@ -2,7 +2,8 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended",
-    "docker:pinDigests"
+    "docker:pinDigests",
+    "helpers:pinGitHubActionDigests"
   ],
   "platformAutomerge": false,
   "automergeStrategy": "squash",
@@ -22,14 +23,19 @@
       "automerge": true
     },
     {
-      "description": "Automerge minor and patch updates to GitHub Actions.",
-      "matchManagers": ["github-actions"],
-      "matchUpdateTypes": ["minor", "patch"],
-      "automerge": true
-    },
-    {
       "description": "Major updates need review.",
       "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
+    {
+      "description": [
+        "Never automerge a GitHub Actions update. Human review is the only control that works here, so do not replace this rule with a delay such as minimumReleaseAge.",
+        "Why review is the only control: an action runs third-party code inside this workflow, where it can read DOCKERHUB_TOKEN and a GITHUB_TOKEN that holds contents:write and packages:write. That is enough to push a poisoned image to Docker Hub and GHCR and to create a release tag. A digest pin stops a moved tag from changing what runs, but it does not stop Renovate from raising a pull request that moves the pin to the attacker's commit. Only a person reading the diff catches that.",
+        "Why minimumReleaseAge does not help: for actions Renovate uses the github-tags datasource, which reports when a version was first released, not when its tag was last re-pushed. A tag force-pushed onto old code keeps the old timestamp and clears any delay at once.",
+        "This rule is deliberately blanket, with no matchUpdateTypes. Digest pinning changes the update type Renovate reports: a pinned SHA whose comment names an exact version, such as # v7.0.1, produces patch and minor updates, so a per-updateType automerge rule elsewhere in this file would silently switch automerge back on for action code. Keep the trailing comments at the major tag, for example # v7, and keep this rule last so it wins over any rule above it.",
+        "This does not affect the Dockerfile base image, which is matched by manager and still automerges."
+      ],
+      "matchManagers": ["github-actions"],
       "automerge": false
     }
   ]

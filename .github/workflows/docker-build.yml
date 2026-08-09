@@ -35,7 +35,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
         # Full history and tags: the version calculation needs the most recent
         # release tag, and the Dockerfile check compares against the previous
@@ -64,8 +64,10 @@ jobs:
           echo "Tag push by you. Publishing version $VERSION, tag already exists."
 
         elif [ "$EVENT" = "push" ] && [ "$REF" = "refs/heads/main" ] && [ "$AUTHOR" = "renovate[bot]" ]; then
-          # Renovate merged something. Only a base image change is a release:
-          # it also automerges GitHub Actions updates, which must not publish.
+          # Renovate merged something. Only a base image change is a release.
+          # Renovate also opens GitHub Actions updates. Those are never
+          # automerged, but you merge them by hand and the author is still
+          # renovate[bot], so this guard is what stops them publishing.
           if git diff --name-only HEAD~1 HEAD | grep -qx 'Dockerfile'; then
             LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
             NUM="${LATEST_TAG#v}"
@@ -106,17 +108,23 @@ jobs:
     # image, and the tests below only run the linux/amd64 image.
     #
     # If a test is ever added that runs the arm64 or arm/v7 image, it will fail
-    # with "exec format error". Add docker/setup-qemu-action@v4 before this step
-    # at that point, and do not pin the emulator image.
+    # with "exec format error". Add docker/setup-qemu-action before this step at
+    # that point, pinned to a commit SHA like every other action here, and do
+    # not pin the emulator image.
+    #
+    # Every action below is pinned to a 40-character commit SHA, with the major
+    # tag in the trailing comment. A tag can be moved to point at new code; a
+    # commit SHA cannot. Renovate keeps the pins current. Do not replace a SHA
+    # with a bare tag.
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v4
+      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
     # Build every platform we publish, so a break on arm64 or arm/v7 shows up
     # here instead of at publish time. The functional tests below need a
     # loadable image, and `load: true` only works for a single platform, so
     # this step only checks that the build succeeds.
     - name: Build all published platforms
-      uses: docker/build-push-action@v7
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
       with:
         context: .
         file: ./Dockerfile
@@ -124,7 +132,7 @@ jobs:
         push: false
 
     - name: Build Docker image (single platform for testing)
-      uses: docker/build-push-action@v7
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
       with:
         context: .
         file: ./Dockerfile
@@ -230,14 +238,14 @@ jobs:
 
     - name: Login to Docker Hub
       if: steps.decide.outputs.publish == 'true'
-      uses: docker/login-action@v4
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
       with:
         username: ${{ github.repository_owner }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     - name: Login to GitHub Container Registry
       if: steps.decide.outputs.publish == 'true'
-      uses: docker/login-action@v4
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
@@ -248,7 +256,7 @@ jobs:
     - name: Extract metadata
       if: steps.decide.outputs.publish == 'true'
       id: meta
-      uses: docker/metadata-action@v6
+      uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
       env:
         # Annotate the index as well as each platform manifest. The index is
         # what a registry shows for a multi-platform image, so without this the
@@ -264,7 +272,7 @@ jobs:
     - name: Build and push to registries
       id: push
       if: steps.decide.outputs.publish == 'true'
-      uses: docker/build-push-action@v7
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
       with:
         context: .
         file: ./Dockerfile
