@@ -2,452 +2,571 @@
 
 [![Docker Build, Test and Publish](https://github.com/kaczmar2/nginx-reverse-proxy/actions/workflows/docker-build.yml/badge.svg)](https://github.com/kaczmar2/nginx-reverse-proxy/actions/workflows/docker-build.yml)
 
-An opinionated nginx reverse proxy Docker image designed for easy configuration management in homelab environments. This image provides a battle-tested nginx configuration with modern security settings, requiring users to only manage their site-specific reverse proxy configurations.
+An opinionated nginx reverse proxy image for homelab use. The image contains a
+complete nginx configuration with modern TLS settings, security headers, and
+reusable include files. You only write the configuration for your own services.
 
-## Features
+- **Source:** <https://github.com/kaczmar2/nginx-reverse-proxy>
+- **Docker Hub:** `kaczmar2/nginx-reverse-proxy`
+- **GitHub Container Registry:** `ghcr.io/kaczmar2/nginx-reverse-proxy`
+- **License:** MIT
 
-- **Based on `nginx:alpine`** for minimal size and security
-- **Opinionated configuration** with proven nginx.conf, SSL settings, and security headers
-- **Modular includes** for SSL, proxy headers, WebSocket support, and HSTS
-- **Example configurations** for common homelab services (UniFi, Pi-hole, Home Assistant, etc.)
-- **Custom landing page** showing the proxy is running
-- **SSL-ready** with organized certificate structure
-- **Vhost-aware access logs** — nginx's default `main` log format with `"$host"` appended as a trailing field (since v1.6.0), so per-vhost traffic can be split from a single log stream
+## Contents
 
-## Quick Start
+- [What the image provides](#what-the-image-provides)
+- [Images, tags, and platforms](#images-tags-and-platforms)
+- [Quick start](#quick-start)
+- [Default behavior](#default-behavior)
+- [Important: mounting your own sites directory](#important-mounting-your-own-sites-directory)
+- [Directory layout](#directory-layout)
+- [Volume mounts](#volume-mounts)
+- [Step-by-step setup](#step-by-step-setup)
+- [Example site configurations](#example-site-configurations)
+- [Include file reference](#include-file-reference)
+- [TLS certificates with acme.sh](#tls-certificates-with-acmesh)
+- [Access logs](#access-logs)
+- [Health check](#health-check)
+- [Customizing the HTML pages](#customizing-the-html-pages)
+- [Troubleshooting](#troubleshooting)
+- [Building from source](#building-from-source)
+
+## What the image provides
+
+The image is based on `nginx:alpine`. The base image is pinned to a digest and
+updated automatically by Renovate.
+
+Built into the image:
+
+| Path | Purpose |
+| --- | --- |
+| `/etc/nginx/nginx.conf` | Main configuration. Loads `conf.d/*.conf` and `sites/*.conf`. |
+| `/etc/nginx/conf.d/default.conf` | Intentionally empty. See the note below. |
+| `/etc/nginx/includes/` | Seven reusable configuration snippets. |
+| `/etc/nginx/sites/00-default-blackhole.conf` | The active default server. |
+| `/etc/nginx/sites.template/` | Read-only copies of all example configurations. |
+| `/usr/share/nginx/html/index.html` | Landing page. |
+| `/usr/share/nginx/html/errors/` | Custom 404 and 50x pages. |
+
+`conf.d/default.conf` is empty on purpose. The default server lives in
+`sites/00-default-blackhole.conf` instead, so that the load order of all virtual
+hosts is controlled in one directory.
+
+You manage two directories:
+
+- `sites/` — one configuration file per service you proxy.
+- `ssl/` — TLS certificates, in one subdirectory per domain.
+
+## Images, tags, and platforms
+
+Both registries receive the same image.
 
 ```bash
-# Run with default configuration (serves landing page)
-docker run -d \
-  --name nginx-proxy \
-  -p 80:80 \
-  -p 443:443 \
+docker pull kaczmar2/nginx-reverse-proxy
+docker pull ghcr.io/kaczmar2/nginx-reverse-proxy
+```
+
+Available tags:
+
+- `latest` — the most recent release.
+- Version tags such as `1.6.3` — a fixed release.
+
+For a stable system, pin a version tag. The `latest` tag moves whenever the
+nginx base image receives a security update, which happens often.
+
+Supported platforms: `linux/amd64`, `linux/arm64`, `linux/arm/v7`.
+
+## Quick start
+
+You need Docker installed. For a real deployment you also need a domain name
+that points to the machine running the proxy, and a TLS certificate for each
+hostname you serve.
+
+Run the image with no configuration to confirm that it works:
+
+```bash
+docker run -d --name nginx-proxy -p 80:80 -p 443:443 \
   kaczmar2/nginx-reverse-proxy
-
-# Visit http://localhost to see the landing page
 ```
 
-## Getting Started Guide
+Open `http://localhost`. You should see the landing page.
 
-This guide walks you through setting up nginx-reverse-proxy from scratch to a working reverse proxy with SSL.
+## Default behavior
 
-### Prerequisites
+Before you add any configuration, the image responds like this:
 
-- Docker and Docker Compose installed
-- A domain name pointing to your server
-- Basic understanding of nginx configuration
+| Request | Response |
+| --- | --- |
+| HTTP request to any hostname | The landing page. |
+| `GET /healthz` over HTTP | `200` with the body `ok`. |
+| HTTP request for a missing page | The custom 404 page. |
+| HTTPS request to any hostname | The TLS handshake is rejected. |
 
-### Step 1: Initial Setup
+The HTTPS default server uses `ssl_reject_handshake on`. Any client that asks
+for a hostname you have not configured receives no certificate and no response.
+This prevents the proxy from presenting a certificate for the wrong service.
+
+After you add your own site configurations, requests that match a `server_name`
+go to that service. Requests that match nothing still reach the default server.
+
+## Important: mounting your own sites directory
+
+**Read this before you mount a volume at `/etc/nginx/sites`.**
+
+The image ships `00-default-blackhole.conf` inside `/etc/nginx/sites/`. A bind
+mount replaces the whole directory, so mounting your own `sites/` directory
+hides that file.
+
+If you mount an empty `sites/` directory, nginx starts but listens on no port at
+all. Every connection is refused, and the container becomes `unhealthy` after
+about 90 seconds. This is confusing, because the logs show a normal startup and
+report no error.
+
+**The fix:** copy the default server configuration into your own `sites/`
+directory before you start the container.
 
 ```bash
-# Create a new directory for your proxy
-mkdir nginx-reverse-proxy && cd nginx-reverse-proxy
-
-# Create the required directory structure
+# Create your directories
 mkdir -p sites ssl
 
-# Download the example docker-compose.yml
-wget https://raw.githubusercontent.com/kaczmar2/nginx-reverse-proxy/main/docker-compose.yml
+# Copy the default server out of the image
+docker run --rm --entrypoint cat kaczmar2/nginx-reverse-proxy \
+  /etc/nginx/sites.template/00-default-blackhole.conf > sites/00-default-blackhole.conf
 ```
 
-### Step 2: Start the Container and Explore Examples
+Keep the `00-` prefix. The file must load first, because nginx assigns
+`default_server` to the first matching block it reads.
 
-```bash
-# Start the container to access example configurations
-docker-compose up -d
+If you do not want a landing page, you can still keep this file. It also
+provides the `/healthz` endpoint that the container health check uses.
 
-# Verify it's working - you should see the landing page
-curl http://localhost
+## Directory layout
 
-# List available example configurations
-docker exec nginx-proxy ls -la /etc/nginx/sites.template/
+```text
+Built into the image (you do not change these):
+/etc/nginx/
+├── nginx.conf                  # Main config; includes conf.d/ and sites/
+├── conf.d/
+│   └── default.conf            # Intentionally empty
+├── includes/                   # Reusable snippets
+│   ├── error_pages.conf
+│   ├── hsts_settings.conf
+│   ├── http_common.conf
+│   ├── proxy_settings.conf
+│   ├── security_headers.conf
+│   ├── ssl_settings.conf
+│   └── websocket_settings.conf
+└── sites.template/             # Example configs, for reference only
 
-# Copy an example that matches your service type
-# For a web service (like a NAS):
-docker cp nginx-proxy:/etc/nginx/sites.template/01-nas.mydomain.com.conf ./sites/my-service.conf
-
-# For a service needing WebSocket support (like Home Assistant):
-docker cp nginx-proxy:/etc/nginx/sites.template/04-ha.mydomain.com.conf ./sites/my-ha.conf
+You manage these (mounted from the host):
+./sites/                        # Your service configurations
+│   ├── 00-default-blackhole.conf
+│   ├── 01-myservice.conf
+│   └── 02-another.conf
+└── ./ssl/                      # Certificates, one directory per domain
+    ├── service.example.com/
+    │   ├── fullchain.pem
+    │   └── privkey.pem
+    └── another.example.com/
+        ├── fullchain.pem
+        └── privkey.pem
 ```
 
-### Step 3: Configure Your Service
-
-Edit your copied configuration file:
-
-```bash
-nano sites/my-service.conf
-```
-
-**Replace these values:**
-- `nas.mydomain.com` → your actual domain (e.g., `jellyfin.homelab.local`)
-- `10.10.10.30:5000` → your service's IP:port (e.g., `192.168.1.100:8096`)
-- SSL certificate paths → match your domain name
-
-**Example modification:**
-```nginx
-# Change from:
-server_name nas.mydomain.com;
-proxy_pass http://10.10.10.30:5000;
-ssl_certificate /etc/nginx/ssl/nas.mydomain.com/fullchain.pem;
-
-# To:
-server_name jellyfin.homelab.local;
-proxy_pass http://192.168.1.100:8096;
-ssl_certificate /etc/nginx/ssl/jellyfin.homelab.local/fullchain.pem;
-```
-
-### Step 4: Generate SSL Certificates
-
-We'll use acme.sh for SSL certificate generation. Install it first if you haven't already:
-
-```bash
-# Install acme.sh
-curl https://get.acme.sh | sh
-source ~/.bashrc
-```
-
-Generate and install certificates for your domain:
-
-```bash
-# Set up your DNS provider credentials (example uses Cloudflare)
-export CF_Email="your-email@example.com"
-export CF_Key="your-cloudflare-global-api-key"
-
-# Issue the certificate using DNS challenge
-acme.sh --issue --dns dns_cf -d your-domain.com --server letsencrypt
-
-# Create the SSL directory for your domain
-mkdir -p ssl/your-domain.com
-
-# Install the certificate
-acme.sh --install-cert -d your-domain.com \
-  --key-file $(pwd)/ssl/your-domain.com/privkey.pem \
-  --fullchain-file $(pwd)/ssl/your-domain.com/fullchain.pem \
-  --reloadcmd "docker exec nginx-proxy nginx -s reload"
-```
-
-For other DNS providers or challenge methods, see the [acme.sh documentation](https://github.com/acmesh-official/acme.sh).
-
-### Step 5: Test and Deploy
-
-```bash
-# Start the reverse proxy
-docker-compose up -d
-
-# Test the configuration
-docker exec nginx-proxy nginx -t
-
-# Check the logs for any errors
-docker-compose logs nginx-proxy
-
-# Test your service (replace with your domain)
-curl -k https://your-domain.com/health
-
-# If using a browser, navigate to https://your-domain.com
-```
-
-### Step 6: Add More Services
-
-For additional services, repeat steps 2-5:
-
-```bash
-# Copy another example
-docker cp nginx-proxy:/etc/nginx/sites.template/00-unifi.mydomain.com.conf ./sites/unifi.conf
-
-# Edit the configuration
-nano sites/unifi.conf
-
-# Generate SSL certificate for the new domain
-acme.sh --issue -d unifi.your-domain.com --standalone
-
-# Restart to reload configuration
-docker-compose restart nginx-proxy
-```
-
-### Common Issues and Solutions
-
-**Issue: Certificate errors**
-```bash
-# Check certificate files exist and have correct permissions
-ls -la ssl/your-domain.com/
-# Should show: fullchain.pem (644) and privkey.pem (600)
-```
-
-**Issue: Service not accessible**
-```bash
-# Verify your backend service is reachable from the container
-docker exec nginx-proxy ping 192.168.1.100
-docker exec nginx-proxy curl http://192.168.1.100:8080
-```
-
-**Issue: nginx won't start**
-```bash
-# Check configuration syntax
-docker exec nginx-proxy nginx -t
-
-# Review the logs
-docker-compose logs nginx-proxy
-```
-
-**Issue: WebSocket connections fail**
-```bash
-# Ensure your configuration includes WebSocket settings
-grep -r "websocket_settings" sites/
-# Should show: include /etc/nginx/includes/websocket_settings.conf;
-```
-
-### Testing Your Configuration
-
-```bash
-# Test SSL certificate
-openssl s_client -connect your-domain.com:443 -servername your-domain.com
-
-# Test HTTP to HTTPS redirect
-curl -I http://your-domain.com
-
-# Test health endpoint
-curl https://your-domain.com/health
-
-# Check response headers for security
-curl -I https://your-domain.com
-# Should include: Strict-Transport-Security header
-```
-
-### Automated Certificate Renewal
-
-acme.sh automatically installs a cron job for certificate renewal, but let's verify it's configured correctly:
-
-```bash
-# Check if acme.sh cron job is installed
-crontab -l | grep acme.sh
-
-# List all certificates managed by acme.sh
-acme.sh --list
-
-# Test renewal (dry run) - doesn't actually renew
-acme.sh --renew -d your-domain.com --dry-run
-
-# Force renewal for testing (only use during testing)
-acme.sh --renew -d your-domain.com --force
-
-# Check renewal logs
-tail -f ~/.acme.sh/acme.sh.log
-```
-
-**The automatic renewal will:**
-1. Renew certificates before they expire (typically 60 days before expiration)
-2. Automatically install renewed certificates to your ssl directory
-3. Execute the reload command to restart your nginx container
-4. Send email notifications if renewal fails (if configured)
-
-**Manual renewal** (if needed):
-```bash
-# Renew a specific certificate
-acme.sh --renew -d your-domain.com
-
-# Renew all certificates
-acme.sh --renew-all
-```
-
-### Production Considerations
-
-1. **Backup your certificates and configurations**
-2. **Monitor certificate expiration dates**
-3. **Use strong SSL ciphers** (already configured in the image)
-4. **Keep the Docker image updated**
-5. **Monitor nginx logs** for suspicious activity
-6. **Consider using fail2ban** for additional security
-
-### Next Steps
-
-- Set up monitoring for your services
-- Configure log rotation
-- Add additional security headers if needed
-- Consider implementing rate limiting for public-facing services
-
-## Getting Started
-
-### 1. Set up your directory structure
-
-```bash
-# Create directories for your configurations
-mkdir -p sites ssl
-
-# Your directory structure should look like:
-# ./sites/          # Your reverse proxy site configs
-# ./ssl/             # SSL certificates organized by domain
-```
-
-### 2. Copy example configurations
-
-```bash
-# Start the container to access examples
-docker run -d --name nginx-proxy-temp kaczmar2/nginx-reverse-proxy
-
-# Copy an example configuration
-docker cp nginx-proxy-temp:/etc/nginx/sites.template/01-nas.mydomain.com.conf ./sites/my-service.conf
-
-# Clean up
-docker stop nginx-proxy-temp && docker rm nginx-proxy-temp
-```
-
-### 3. Edit your configuration
-
-```bash
-# Edit the copied config file
-nano sites/my-service.conf
-
-# Replace:
-# - 'nas.mydomain.com' with your actual domain
-# - '10.10.10.30:5000' with your service IP:port
-# - SSL certificate paths if needed
-```
-
-### 4. Generate SSL certificates (recommended)
-
-```bash
-# Using acme.sh (recommended method)
-# Install acme.sh first: https://github.com/acmesh-official/acme.sh
-
-# Generate certificate for your domain
-acme.sh --issue -d your-domain.com --standalone
-
-# Copy certificates to your ssl directory
-mkdir -p ssl/your-domain.com
-cp ~/.acme.sh/your-domain.com/fullchain.cer ssl/your-domain.com/fullchain.pem
-cp ~/.acme.sh/your-domain.com/your-domain.com.key ssl/your-domain.com/privkey.pem
-```
-
-### 5. Run with Docker Compose (recommended)
+Use a numeric prefix on each file in `sites/` to control the load order.
+
+## Volume mounts
+
+| Container path | Required | Purpose |
+| --- | --- | --- |
+| `/etc/nginx/sites` | Yes, for real use | Your service configurations. |
+| `/etc/nginx/ssl` | Yes, for HTTPS | Your certificates. |
+| `/usr/share/nginx/html` | No | Replaces all HTML pages. |
+| `/usr/share/nginx/html/index.html` | No | Replaces only the landing page. |
+| `/usr/share/nginx/html/errors` | No | Replaces only the error pages. |
+
+Compose file:
 
 ```yaml
-# docker-compose.yml
-version: '3.8'
-
 services:
   nginx-proxy:
-    image: kaczmar2/nginx-reverse-proxy:latest
+    image: kaczmar2/nginx-reverse-proxy
     container_name: nginx-proxy
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./sites:/etc/nginx/sites
+      - ./sites:/etc/nginx/sites   # Must contain 00-default-blackhole.conf
       - ./ssl:/etc/nginx/ssl
     environment:
       - TZ=America/Denver
 ```
 
-```bash
-# Start the proxy
-docker-compose up -d
-```
+## Step-by-step setup
 
-## Configuration Structure
-
-This image uses an opinionated structure where most configuration is built-in:
-
-```
-Built into image (opinionated):
-├── nginx.conf              # Main nginx config with WebSocket support
-├── conf.d/default.conf     # Serves the landing page
-└── includes/               # Reusable configuration snippets
-    ├── ssl_settings.conf   # Modern TLS configuration
-    ├── proxy_settings.conf # Standard proxy headers
-    ├── hsts_settings.conf  # HTTP Strict Transport Security
-    ├── websocket_settings.conf # WebSocket proxy support
-    └── keepalive_settings.conf # Keep-alive for embedded devices
-
-User manages:
-├── sites/                  # Your reverse proxy configurations
-└── ssl/                    # SSL certificates organized by domain
-    ├── example.com/
-    │   ├── fullchain.pem
-    │   └── privkey.pem
-    └── another.com/
-        ├── fullchain.pem
-        └── privkey.pem
-```
-
-**Site Naming Convention:** Use numbered prefixes (e.g., `00-`, `01-`, `02-`) for your site configs to control the load order.
-
-## Example Site Configurations
-
-Example configurations are included for common homelab services:
-
-- **`00-unifi.mydomain.com.conf`** - UniFi Network Application (UDM-Pro, CloudKey, etc.)
-  - HTTPS proxy with WebSocket support for real-time updates
-  - Handles self-signed backend certificates
-  
-- **`01-nas.mydomain.com.conf`** - Synology NAS web interface (DSM)
-  - Standard HTTPS proxy for NAS management
-  
-- **`02-pihole.mydomain.com.conf`** - Pi-hole DNS management interface
-  - Simple HTTP-to-HTTPS reverse proxy
-  
-- **`03-print.mydomain.com.conf`** - HP Printer web interface
-  - Includes keep-alive settings for embedded web servers
-  
-- **`04-ha.mydomain.com.conf`** - Home Assistant with Z-Wave JS UI sub-path
-  - Main service on `/` with WebSocket support
-  - Z-Wave JS UI accessible at `/zwave/` subdirectory
-  - Demonstrates complex URL rewriting and multiple backend services
-
-Each example includes:
-- HTTP to HTTPS redirect
-- SSL certificate configuration
-- Security headers (HSTS)
-- Service-specific optimizations
-
-## Volume Mounts
-
-The simplified approach only requires mounting what you customize:
+### Step 1: Create the directories
 
 ```bash
-docker run -d \
-  --name nginx-proxy \
-  -p 80:80 -p 443:443 \
-  -v ./sites:/etc/nginx/sites \
-  -v ./ssl:/etc/nginx/ssl \
-  kaczmar2/nginx-reverse-proxy
+mkdir -p nginx-reverse-proxy/{sites,ssl}
+cd nginx-reverse-proxy
 ```
 
-Optional mounts:
+### Step 2: Copy the default server
+
 ```bash
-# Override the landing page
--v ./custom-html:/usr/share/nginx/html
+docker run --rm --entrypoint cat kaczmar2/nginx-reverse-proxy \
+  /etc/nginx/sites.template/00-default-blackhole.conf > sites/00-default-blackhole.conf
 ```
 
-## SSL Certificate Management
+### Step 3: Copy an example that matches your service
 
-### Using acme.sh
-
-Install acme.sh and generate certificates:
+List the available examples:
 
 ```bash
-# Install acme.sh
+docker run --rm kaczmar2/nginx-reverse-proxy ls /etc/nginx/sites.template/
+```
+
+Copy the one you want. This example uses the Home Assistant configuration:
+
+```bash
+docker run --rm --entrypoint cat kaczmar2/nginx-reverse-proxy \
+  /etc/nginx/sites.template/05-ha.mydomain.com.conf > sites/01-ha.conf
+```
+
+### Step 4: Edit the configuration
+
+Open `sites/01-ha.conf` and change three things:
+
+1. `server_name` — your domain name.
+2. `proxy_pass` — the address and port of your service.
+3. The two `ssl_certificate` paths — they must match your domain name.
+
+Example change:
+
+```nginx
+# From:
+server_name ha.mydomain.com;
+proxy_pass http://10.10.20.50:8123;
+ssl_certificate     /etc/nginx/ssl/ha.mydomain.com/fullchain.pem;
+ssl_certificate_key /etc/nginx/ssl/ha.mydomain.com/privkey.pem;
+
+# To:
+server_name home.example.com;
+proxy_pass http://192.168.1.100:8123;
+ssl_certificate     /etc/nginx/ssl/home.example.com/fullchain.pem;
+ssl_certificate_key /etc/nginx/ssl/home.example.com/privkey.pem;
+```
+
+Remember to change `server_name` in **both** server blocks. The first block
+redirects HTTP to HTTPS. The second block serves the site.
+
+### Step 5: Install a certificate
+
+See [TLS certificates with acme.sh](#tls-certificates-with-acmesh) below. The
+files must be at `ssl/<your-domain>/fullchain.pem` and
+`ssl/<your-domain>/privkey.pem`.
+
+### Step 6: Start the container
+
+```bash
+docker compose up -d
+docker exec nginx-proxy nginx -t
+docker compose logs nginx-proxy
+```
+
+### Step 7: Test
+
+```bash
+# Health endpoint
+curl http://localhost/healthz
+
+# HTTP redirects to HTTPS
+curl -I http://home.example.com
+
+# The service responds over HTTPS
+curl -I https://home.example.com
+```
+
+### Step 8: Add more services
+
+Repeat steps 3 to 5 for each service. Use a new number prefix for each file.
+After you add a file, reload nginx without stopping it:
+
+```bash
+docker exec nginx-proxy nginx -t && docker exec nginx-proxy nginx -s reload
+```
+
+## Example site configurations
+
+These files are in `/etc/nginx/sites.template/` inside the image. They use the
+placeholder domain `mydomain.com` and private IP addresses. Change both.
+
+| File | Service | What it demonstrates |
+| --- | --- | --- |
+| `00-default-blackhole.conf` | Default server | Landing page, `/healthz`, and rejection of unknown HTTPS hostnames. |
+| `01-unifi.mydomain.com.conf` | UniFi Network Application | Proxy to an HTTPS backend that uses a self-signed certificate. WebSocket support. |
+| `02-nas.mydomain.com.conf` | Synology DSM | Unlimited upload size and long timeouts for File Station. |
+| `03-pihole.mydomain.com.conf` | Pi-hole | The simplest case: plain HTTP backend, no WebSocket. |
+| `04-print.mydomain.com.conf` | Printer web interface | A `Connection: keep-alive` header for embedded web servers. |
+| `05-ha.mydomain.com.conf` | Home Assistant | Two backends in one server block. Z-Wave JS UI is served under `/zwave/` using a rewrite. |
+| `06-plex.mydomain.com.conf` | Plex Media Server | An `upstream` block with keepalive, long timeouts, and buffering disabled for media streams. |
+
+Every example includes an HTTP to HTTPS redirect, TLS settings, and security
+headers.
+
+Two details to note when you read the examples:
+
+- `03-pihole.mydomain.com.conf` uses the hostname `ns1.mydomain.com` inside the
+  file, not `pihole.mydomain.com`. The file name and the hostname do not match.
+- In `05-ha.mydomain.com.conf`, the `/zwave/` block must come before the `/`
+  block. nginx matches prefix locations by length, but keeping the specific
+  block first makes the intent clear.
+
+## Include file reference
+
+Include files reduce repetition. Each one belongs in a specific place in the
+configuration. Putting an include in the wrong scope causes a startup error.
+
+| File | Where to include it | What it does |
+| --- | --- | --- |
+| `ssl_settings.conf` | Inside `server { }` | TLS 1.2 and 1.3 only, a modern cipher list, and X25519 curve preference. |
+| `hsts_settings.conf` | Inside `server { }` | Adds `Strict-Transport-Security` with a one-year lifetime. |
+| `security_headers.conf` | Inside `server { }` | Adds `X-Content-Type-Options`, `Referrer-Policy`, and `X-Frame-Options`. |
+| `error_pages.conf` | Inside `server { }` | Serves the custom 404 and 50x pages. |
+| `proxy_settings.conf` | Inside `location { }` | Sets HTTP/1.1 and the `Host`, `X-Real-IP`, `X-Forwarded-For`, and `X-Forwarded-Proto` headers. |
+| `websocket_settings.conf` | Inside `location { }` | Sets the `Upgrade` and `Connection` headers. Requires `proxy_settings.conf` in the same block. |
+| `http_common.conf` | Already loaded | TLS session cache, gzip compression, and the `$connection_upgrade` map. |
+
+Do not include `http_common.conf` yourself. `nginx.conf` already loads it at the
+`http` level. Including it inside a `server` block fails to start with this
+error:
+
+```text
+nginx: [emerg] "map" directive is not allowed here in /etc/nginx/includes/http_common.conf:9
+```
+
+A minimal service configuration looks like this:
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name service.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name service.example.com;
+
+    ssl_certificate     /etc/nginx/ssl/service.example.com/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/service.example.com/privkey.pem;
+
+    include /etc/nginx/includes/ssl_settings.conf;
+    include /etc/nginx/includes/hsts_settings.conf;
+    include /etc/nginx/includes/security_headers.conf;
+    include /etc/nginx/includes/error_pages.conf;
+
+    location / {
+        include /etc/nginx/includes/proxy_settings.conf;
+        include /etc/nginx/includes/websocket_settings.conf;
+
+        proxy_pass http://192.168.1.100:8080;
+    }
+}
+```
+
+## TLS certificates with acme.sh
+
+The proxy does not request certificates. Use a separate tool. These steps use
+`acme.sh` with a DNS challenge, which works for services that are not reachable
+from the internet.
+
+Install acme.sh:
+
+```bash
 curl https://get.acme.sh | sh
 source ~/.bashrc
-
-# Set up DNS provider credentials (example uses Cloudflare)
-export CF_Email="your-email@example.com"
-export CF_Key="your-cloudflare-global-api-key"
-
-# Issue certificate
-acme.sh --issue --dns dns_cf -d your-domain.com --server letsencrypt
-
-# Install certificate
-mkdir -p ssl/your-domain.com
-acme.sh --install-cert -d your-domain.com \
-  --key-file ssl/your-domain.com/privkey.pem \
-  --fullchain-file ssl/your-domain.com/fullchain.pem \
-  --reloadcmd "docker exec nginx-proxy nginx -s reload"
 ```
 
-For other DNS providers or challenge methods, see the [acme.sh documentation](https://github.com/acmesh-official/acme.sh).
+Request a certificate. This example uses Cloudflare DNS:
 
-## Building from Source
+```bash
+export CF_Email="you@example.com"
+export CF_Key="your-cloudflare-global-api-key"
+
+acme.sh --issue --dns dns_cf -d service.example.com --server letsencrypt
+```
+
+Install the certificate into the proxy directory:
+
+```bash
+mkdir -p ssl/service.example.com
+
+acme.sh --install-cert -d service.example.com \
+  --key-file       "$(pwd)/ssl/service.example.com/privkey.pem" \
+  --fullchain-file "$(pwd)/ssl/service.example.com/fullchain.pem" \
+  --reloadcmd      "docker exec nginx-proxy nginx -s reload"
+```
+
+The `--reloadcmd` option matters. acme.sh renews certificates automatically
+through a cron job, but nginx keeps the old certificate in memory until you
+reload it.
+
+Check the renewal configuration:
+
+```bash
+acme.sh --list
+acme.sh --renew -d service.example.com --dry-run
+```
+
+For other DNS providers, see the
+[acme.sh documentation](https://github.com/acmesh-official/acme.sh).
+
+## Access logs
+
+The image uses nginx's standard `main` log format with one extra field at the
+end: the requested hostname, from `$host`. This was added in v1.6.0.
+
+```text
+$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent
+"$http_referer" "$http_user_agent" "$http_x_forwarded_for" "$host"
+```
+
+One proxy serves many hostnames, and all of them write to the same log file.
+The trailing field lets you separate the traffic for one service:
+
+```bash
+# All requests for one hostname
+docker logs nginx-proxy 2>/dev/null | grep '"home.example.com"$'
+
+# Request count per hostname
+docker exec nginx-proxy sh -c 'awk -F\" "{print \$(NF-1)}" /var/log/nginx/access.log' \
+  | sort | uniq -c | sort -rn
+```
+
+The field is last, so tools that parse the standard `main` format still work.
+Health check requests are not logged, because `00-default-blackhole.conf` sets
+`access_log off` on the `/healthz` location.
+
+## Health check
+
+The image defines a Docker health check. It runs every 30 seconds and requests
+`http://127.0.0.1/healthz`.
+
+You can also call the endpoint directly:
+
+```bash
+curl http://localhost/healthz
+# ok
+```
+
+Two limits to know:
+
+1. The endpoint is served **only over HTTP**, on the default server. It is not
+   available over HTTPS, and it is not available on your own virtual hosts.
+2. The endpoint is defined in `00-default-blackhole.conf`. If that file is
+   missing from your `sites/` directory, the endpoint disappears and the health
+   check fails.
+
+Check the current status:
+
+```bash
+docker inspect -f '{{.State.Health.Status}}' nginx-proxy
+```
+
+## Customizing the HTML pages
+
+Choose one of these mounts. Do not use more than one at the same time.
+
+Replace only the landing page:
+
+```yaml
+- ./html/index.html:/usr/share/nginx/html/index.html
+```
+
+Replace only the error pages. The directory must contain `404.html` and
+`50x.html`:
+
+```yaml
+- ./html/errors:/usr/share/nginx/html/errors
+```
+
+Replace everything. The directory must contain `index.html` and an `errors`
+subdirectory, or the pages return 404:
+
+```yaml
+- ./html:/usr/share/nginx/html
+```
+
+## Troubleshooting
+
+### The container is running, but every connection is refused
+
+Your `sites/` directory has no server block listening on port 80 or 443. This
+almost always means `00-default-blackhole.conf` is missing. See
+[Important: mounting your own sites directory](#important-mounting-your-own-sites-directory).
+
+Confirm what nginx is listening on:
+
+```bash
+docker exec nginx-proxy netstat -ltn
+```
+
+An empty list confirms the problem.
+
+### nginx does not start
+
+Check the configuration syntax first:
+
+```bash
+docker exec nginx-proxy nginx -t
+docker logs nginx-proxy
+```
+
+A common cause is an include in the wrong scope. See the
+[include file reference](#include-file-reference).
+
+### The browser shows a certificate warning
+
+The requested hostname does not match any `server_name`, so the default HTTPS
+server handled the request and rejected the handshake. Check for a typo in
+`server_name`, and confirm that the file is in `sites/` and ends in `.conf`.
+
+Verify which certificate is served:
+
+```bash
+openssl s_client -connect service.example.com:443 -servername service.example.com
+```
+
+### The service is not reachable
+
+Test from inside the container. The proxy must be able to reach the backend:
+
+```bash
+docker exec nginx-proxy curl -I http://192.168.1.100:8080
+```
+
+### WebSocket connections fail
+
+The location block needs both include files, in this order:
+
+```bash
+grep -A3 "location /" sites/your-service.conf
+```
+
+You should see `proxy_settings.conf` and then `websocket_settings.conf`.
+
+### File uploads fail on large files
+
+nginx limits the request body size. Add this inside the `server` block:
+
+```nginx
+client_max_body_size 100M;   # or 0 for no limit
+```
+
+## Building from source
 
 ```bash
 git clone https://github.com/kaczmar2/nginx-reverse-proxy.git
@@ -455,11 +574,6 @@ cd nginx-reverse-proxy
 docker build -t nginx-reverse-proxy .
 ```
 
-## Available Images
-
-- **Docker Hub**: `docker pull kaczmar2/nginx-reverse-proxy`
-- **GitHub Container Registry**: `docker pull ghcr.io/kaczmar2/nginx-reverse-proxy`
-
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT. See the [LICENSE](LICENSE) file.
