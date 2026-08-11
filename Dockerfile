@@ -1,7 +1,12 @@
 FROM nginx:alpine@sha256:4a73073bd557c65b759505da037898b61f1be6cbcc3c2c3aeac22d2a470c1752
 
-LABEL org.opencontainers.image.authors="Christian Kaczmarek" \
-      org.opencontainers.image.description="Opinionated nginx reverse proxy Docker image for homelab use" \
+# These labels are the only metadata a plain `docker build` produces. In CI,
+# metadata-action overwrites description, licenses and source with the same or
+# better values, and adds created, revision and version. Keep build-time facts
+# out of here: they belong to the workflow, not the Dockerfile.
+LABEL org.opencontainers.image.title="nginx-reverse-proxy" \
+      org.opencontainers.image.authors="Christian Kaczmarek" \
+      org.opencontainers.image.description="Opinionated nginx reverse proxy Docker image for homelabs, with modern TLS and security headers" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/kaczmar2/nginx-reverse-proxy"
 
