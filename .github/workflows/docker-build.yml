@@ -124,7 +124,7 @@ jobs:
     # loadable image, and `load: true` only works for a single platform, so
     # this step only checks that the build succeeds.
     - name: Build all published platforms
-      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
       with:
         context: .
         file: ./Dockerfile
@@ -132,7 +132,7 @@ jobs:
         push: false
 
     - name: Build Docker image (single platform for testing)
-      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
       with:
         context: .
         file: ./Dockerfile
@@ -272,7 +272,7 @@ jobs:
     - name: Build and push to registries
       id: push
       if: steps.decide.outputs.publish == 'true'
-      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
       with:
         context: .
         file: ./Dockerfile
