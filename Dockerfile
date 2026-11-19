@@ -1,4 +1,4 @@
-FROM nginx:alpine@sha256:fed7e14be83cbd2661a75cdc5b872d936cf155d46c327084d30b8df19ae88d72
+FROM nginx:alpine@sha256:0563c36f94a6d3ec3584161b77859f740f7e20b4853f52c796a864ce6908e8ea
 
 # These labels are the only metadata a plain `docker build` produces. In CI,
 # metadata-action overwrites description, licenses and source with the same or
